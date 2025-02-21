@@ -4,6 +4,10 @@ import './App.css'
 import Landing from './pages/Landing'
 import Signup from './pages/Signup'
 import Login from './pages/Login';
+import SignUpHostel from './pages/SignUpHostel';
+import StudentDash from './pages/StudentDash';
+import Ownerdash from './pages/Ownerdash';
+import Admindash from './pages/Admindash';
 
 function App() {
   const [count, setCount] = useState(0)
@@ -15,6 +19,10 @@ function App() {
       <Route path="/" element={<Landing />} />
       <Route path="/signup" element={<Signup />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/signupHostel" element={<SignUpHostel />} />
+      <Route path="/student-dashboard" element={<StudentDash />} />
+      <Route path="/owner-dashboard" element={<Ownerdash />} />
+      <Route path="/admin-dashboard" element={<Admindash />} />
     </Routes>
   </BrowserRouter>
 </>

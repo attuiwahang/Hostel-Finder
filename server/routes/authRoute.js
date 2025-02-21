@@ -1,9 +1,16 @@
-const {registerUser,loginUser} = require("../controller/userController");
+const { registerUser, loginUser, registerOwner,getUserForVerification, verifyUser, DeleteUser } = require("../controller/userController");
+const { multer, storage } = require("../Services/MulterConfig");
+const upload = multer({ storage: storage });
 
-const router = require("express").Router()
+const router = require("express").Router();
 
-router.route("/register").post(registerUser)
-router.post('/login', loginUser);
+router.post("/registerUser", registerUser);
+router.post("/registerOwner", upload.single("mainPhoto"), registerOwner);
+router.post("/login", loginUser);
+
+router.get("/getUsersForVerification", getUserForVerification);
+router.post("/verifyUser/:id", verifyUser);
+router.post("/deleteUser/:id", DeleteUser);
 
 
-module.exports = router
+module.exports = router;

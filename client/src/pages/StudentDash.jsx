@@ -5,19 +5,14 @@ import Services from '../components/Services'
 import About from '../components/About'
 import Footer from '../components/Footer'
 
-const Landing = () => {
+const StudentDash = () => {
   return (
-    <div>
-        <div>
-          <Navbar/>
-          <Hero />
-          <Services />
-          <About />
-          <Footer />
-        
-        </div>
-    </div>
+    <div><Navbar/>
+    <Hero />
+    <Services />
+    <About />
+    <Footer /></div>
   )
 }
 
-export default Landing
+export default StudentDash
