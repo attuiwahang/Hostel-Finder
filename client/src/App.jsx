@@ -8,6 +8,7 @@ import SignUpHostel from './pages/SignUpHostel';
 import StudentDash from './pages/StudentDash';
 import Ownerdash from './pages/Ownerdash';
 import Admindash from './pages/Admindash';
+import AboutUs from './components/AboutUs';
 
 function App() {
   const [count, setCount] = useState(0)
@@ -23,6 +24,7 @@ function App() {
       <Route path="/student-dashboard" element={<StudentDash />} />
       <Route path="/owner-dashboard" element={<Ownerdash />} />
       <Route path="/admin-dashboard" element={<Admindash />} />
+      <Route path="/AboutUs" element={<AboutUs />} />
     </Routes>
   </BrowserRouter>
 </>

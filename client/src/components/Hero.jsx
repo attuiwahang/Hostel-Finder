@@ -3,7 +3,7 @@ import hero from '../assets/hero.png';
 
 const Hero = () => {
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-screen -z-10">
       {/* Background Image with Overlay */}
       <div
         className="absolute inset-0 z-0 bg-cover bg-center"

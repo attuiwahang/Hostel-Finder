@@ -1,8 +1,11 @@
 import React from 'react'
+import OwnerNav from '../components/OwnerNav'
 
 const Ownerdash = () => {
   return (
-    <div>Ownerdash</div>
+    <div>
+      <OwnerNav />
+      Ownerdash</div>
   )
 }
 

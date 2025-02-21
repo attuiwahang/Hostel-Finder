@@ -6,8 +6,8 @@ import { Link, NavLink, useNavigate } from "react-router-dom";
 import { IoIosNotifications } from "react-icons/io";
 import { CiLogout } from "react-icons/ci";
 
-const Navbar = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+const OwnerNav = () => {
+
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
@@ -49,11 +49,11 @@ const Navbar = () => {
       <div className="flex items-center gap-6">
         <div className="flex gap-6 text-[#F9F9FF]">
           <Link to="/">Home</Link>
-          <Link to="/hostels">Hostels</Link>
-          <Link to="/Contact">Contact</Link>
+          <Link to="/hostels">My Hostels</Link>
+          <Link to="/Add-Hostel">Add Hostels</Link>
           <Link to="/AboutUs">About Us</Link>
 
-          {isLoggedIn ? (
+         
             <div className="flex items-center gap-4 relative" ref={dropdownRef}>
               <img
                 src={notification}
@@ -85,17 +85,11 @@ const Navbar = () => {
                 )}
               </div>
             </div>
-          ) : (
-            <NavLink to="/login">
-              <button className="bg-primaryColor px-4 py-1 text-[#F9F9FF] rounded">
-                Log in
-              </button>
-            </NavLink>
-          )}
+        
         </div>
       </div>
     </div>
   );
 };
 
-export default Navbar;
+export default OwnerNav;
