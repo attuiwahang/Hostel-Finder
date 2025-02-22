@@ -1,9 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
+// This is your Prisma schema file
+// Learn more at: https://pris.ly/d/prisma-schema
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,37 +9,85 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 model User {
-  id                Int                       @id @default(autoincrement())
-  name              String
-  email             String                    @unique
-  password          String
-  address           String?
-  contact           String
-  role              UserRole                  @default(STUDENT)
-  createdAt         DateTime                  @default(now())
-  updatedAt         DateTime                  @updatedAt
+  id        Int       @id @default(autoincrement())
+  name      String
+  email     String    @unique
+  password  String
+  address   String?
+  contact   String
+  role      UserRole  @default(STUDENT)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
+  bookings  Booking[]  // One user can have many bookings
 }
 
 model HostelOwner {
-  id                Int                       @id @default(autoincrement())
-  hostelName        String
-  ownerName         String
-  email             String                    @unique
-  password          String
-  contact           String
-  location          String
-  address           String
-  latitude          Float
-  longitude         Float
-  description       String                    @db.Text
-  mainPhoto         String
-  avgRating         Float                     @default(0)
-  createdAt         DateTime                  @default(now())
-  updatedAt         DateTime                  @updatedAt
-  isApproved        Boolean                   @default(false)
+  id          Int       @id @default(autoincrement())
+  hostelName  String
+  ownerName   String
+  email       String    @unique
+  password    String
+  contact     String
+  location    String
+  address     String
+  latitude    Float
+  longitude   Float
+  description String    @db.Text
+  mainPhoto   String
+  avgRating   Float     @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  isApproved  Boolean   @default(false)
+
+  bookings   Booking[]  // One hostel owner can have many bookings
+}
+
+model Booking {
+  id             Int           @id @default(autoincrement())
+  userId         Int
+  hostelOwnerId  Int
+  userName       String
+  email          String        
+  phoneNumber    String       
+  bookingDate    DateTime      @default(now())
+  checkInDate    DateTime
+  noOfPeople     Int
+  status         BookingStatus @default(PENDING)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  user           User          @relation(fields: [userId], references: [id])
+  hostelOwner    HostelOwner   @relation(fields: [hostelOwnerId], references: [id])
+
+  payments       Payment[]     
+}
+
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+model Payment {
+  id             Int           @id @default(autoincrement())
+  bookingId      Int
+  amount         Float
+  pidx           String       @unique
+  paymentDate    DateTime      @default(now())
+  paymentStatus  PaymentStatus @default(PENDING)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  booking        Booking       @relation(fields: [bookingId], references: [id])
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
 }
 
 enum UserRole {

@@ -50,7 +50,7 @@ const Navbar = () => {
         <div className="flex gap-6 text-[#F9F9FF]">
           <Link to="/">Home</Link>
           <Link to="/hostels">Hostels</Link>
-          <Link to="/Contact">Contact</Link>
+          <Link to="/Booking">Booking</Link>
           <Link to="/AboutUs">About Us</Link>
 
           {isLoggedIn ? (

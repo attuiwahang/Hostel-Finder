@@ -9,6 +9,8 @@ import StudentDash from './pages/StudentDash';
 import Ownerdash from './pages/Ownerdash';
 import Admindash from './pages/Admindash';
 import AboutUs from './components/AboutUs';
+import Hostels from './pages/Hostels';
+import HostelDetails from './pages/HostelDetails';
 
 function App() {
   const [count, setCount] = useState(0)
@@ -25,6 +27,8 @@ function App() {
       <Route path="/owner-dashboard" element={<Ownerdash />} />
       <Route path="/admin-dashboard" element={<Admindash />} />
       <Route path="/AboutUs" element={<AboutUs />} />
+      <Route path="/hostels" element={<Hostels/>} />
+      <Route path="/hostelDetails/:id" element={<HostelDetails/>} />
     </Routes>
   </BrowserRouter>
 </>
