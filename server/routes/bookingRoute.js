@@ -1,5 +1,5 @@
 const { bookHostel } = require("../controller/BookingController");
-const { Payment } = require("../controller/PaymentController");
+const { Payment, confirmPayment } = require("../controller/PaymentController");
 
 
 const router = require("express").Router();
@@ -7,5 +7,6 @@ const router = require("express").Router();
 
 router.post("/",bookHostel);
 router.post('/payment',Payment)
+router.get('/confirmpayment', confirmPayment);
 
 module.exports = router;

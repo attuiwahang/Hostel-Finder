@@ -11,6 +11,7 @@ import Admindash from './pages/Admindash';
 import AboutUs from './components/AboutUs';
 import Hostels from './pages/Hostels';
 import HostelDetails from './pages/HostelDetails';
+import Success from './pages/success';
 
 function App() {
   const [count, setCount] = useState(0)
@@ -29,6 +30,7 @@ function App() {
       <Route path="/AboutUs" element={<AboutUs />} />
       <Route path="/hostels" element={<Hostels/>} />
       <Route path="/hostelDetails/:id" element={<HostelDetails/>} />
+      <Route path="/success" element={<Success />} />
     </Routes>
   </BrowserRouter>
 </>

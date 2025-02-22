@@ -86,3 +86,72 @@ exports.Payment = async (req, res) => {
     });
   }
 };
+
+exports.confirmPayment = async (req, res) => {
+  try {
+    const { pidx, amount, purchase_order_id } = req.query;
+
+    console.log(pidx,amount,purchase_order_id)
+
+    if (!pidx || !amount || !purchase_order_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required parameters"
+      });
+    }
+
+   
+    const pendingBooking = await prisma.booking.findFirst({
+      where: {
+        id: Number(purchase_order_id),
+        status: "PENDING"
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    if (!pendingBooking) {
+      console.log("yaha xa problem")
+      return res.status(404).json({
+        success: false,
+        message: "No pending booking found"
+      });
+
+     
+      
+    }
+
+   
+    const [payment, updatedBooking] = await prisma.$transaction([
+      prisma.payment.create({
+        data: {
+          bookingId: Number(purchase_order_id),
+          amount: Number(amount) / 100, 
+          paymentDate: new Date(),
+          paymentStatus: 'COMPLETED',
+          pidx: pidx
+        }
+      }),
+      prisma.booking.update({
+        where: { id: Number(purchase_order_id) },
+        data: { status: "CONFIRMED", updatedAt: new Date() }
+      })
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment confirmed successfully",
+      data: { payment, booking: updatedBooking }
+    });
+
+  } catch (error) {
+    console.error("Payment confirmation error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to confirm payment",
+      error: error.message
+    });
+  }
+};
+
