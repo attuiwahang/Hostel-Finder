@@ -16,7 +16,6 @@ exports.getHostels = async (req, res) => {
   }
 };
 
-
 exports.hostelDetails = async (req, res) => {
   const { id } = req.params;
 

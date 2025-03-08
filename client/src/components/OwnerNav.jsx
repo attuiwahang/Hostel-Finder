@@ -11,6 +11,7 @@ const OwnerNav = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
 
   useEffect(() => {
     const token = Cookies.get("Token");

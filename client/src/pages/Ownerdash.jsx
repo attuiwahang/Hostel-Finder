@@ -5,7 +5,7 @@ const Ownerdash = () => {
   return (
     <div>
       <OwnerNav />
-      Ownerdash</div>
+      </div>
   )
 }
 
