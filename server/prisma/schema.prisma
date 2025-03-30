@@ -1,5 +1,6 @@
 // This is your Prisma schema file
 // Learn more at: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,88 +11,385 @@ datasource db {
 }
 
 model User {
-  id        Int       @id @default(autoincrement())
-  name      String
-  email     String    @unique
-  password  String
-  address   String?
-  contact   String
-  role      UserRole  @default(STUDENT)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  bookings  Booking[]  // One user can have many bookings
+  id              Int       @id @default(autoincrement())
+  name            String
+  email           String    @unique
+  password        String
+  address         String?
+  contact         String
+  profileImage    String?
+  role            UserRole  @default(STUDENT)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  bookings        Booking[]
+  reviews         Review[]
+  notifications   Notification[]
+  chats           Chat[]    @relation("UserChats")
 }
 
 model HostelOwner {
-  id          Int       @id @default(autoincrement())
-  hostelName  String
-  ownerName   String
-  email       String    @unique
-  password    String
-  contact     String
-  location    String
-  address     String
-  latitude    Float
-  longitude   Float
-  description String    @db.Text
-  mainPhoto   String
-  avgRating   Float     @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  isApproved  Boolean   @default(false)
+  id                Int         @id @default(autoincrement())
+  hostelName        String
+  ownerName         String
+  email             String      @unique
+  password          String
+  contact           String
+  location          String
+  address           String
+  latitude          Float
+  longitude         Float
+  description       String      @db.Text
+  mainPhoto         String
+  photos            HostelPhoto[]
+  avgRating         Float       @default(0)
+  totalRatings      Int         @default(0)
+  startingPrice     Float       // Starting monthly price
+  gender            GenderPolicy @default(COED)
+  rules             String?     @db.Text
+  checkInTime       String?     // Format: "14:00"
+  checkOutTime      String?     // Format: "11:00"
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  isApproved        Boolean     @default(false)
+  isVerified        Boolean     @default(false)
+  
+  rooms             Room[]
+  bookings          Booking[]
+  amenities         HostelAmenity[]
+  reviews           Review[]
+  staff             Staff[]
+  chats             Chat[]      @relation("HostelOwnerChats")
+  notifications     HostelOwnerNotification[]
+}
 
-  bookings   Booking[]  // One hostel owner can have many bookings
+model HostelPhoto {
+  id              Int         @id @default(autoincrement())
+  hostelOwnerId   Int
+  photoUrl        String
+  caption         String?
+  createdAt       DateTime    @default(now())
+  
+  hostelOwner     HostelOwner @relation(fields: [hostelOwnerId], references: [id], onDelete: Cascade)
+}
+
+model Room {
+  id              Int         @id @default(autoincrement())
+  hostelOwnerId   Int
+  roomNumber      String?
+  roomType        RoomType
+  floorNumber     Int?
+  monthlyPrice    Float
+  securityDeposit Float?
+  description     String?     @db.Text
+  totalBeds       Int
+  availableBeds   Int
+  photos          RoomPhoto[]
+  amenities       RoomAmenity[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  hostelOwner     HostelOwner @relation(fields: [hostelOwnerId], references: [id], onDelete: Cascade)
+  beds            Bed[]
+  bookings        BookingRoom[]
+}
+
+model Bed {
+  id              Int         @id @default(autoincrement())
+  roomId          Int
+  bedNumber       String
+  bedType         BedType
+  isOccupied      Boolean     @default(false)
+  
+  room            Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  bookingBeds     BookingBed[]
+}
+
+model RoomPhoto {
+  id              Int         @id @default(autoincrement())
+  roomId          Int
+  photoUrl        String
+  caption         String?
+  createdAt       DateTime    @default(now())
+  
+  room            Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+}
+
+model Amenity {
+  id              Int             @id @default(autoincrement())
+  name            String          @unique
+  icon            String?
+  category        AmenityCategory @default(GENERAL)
+  
+  hostelAmenities HostelAmenity[]
+  roomAmenities   RoomAmenity[]
+}
+
+model HostelAmenity {
+  id              Int         @id @default(autoincrement())
+  hostelOwnerId   Int
+  amenityId       Int
+  
+  hostelOwner     HostelOwner @relation(fields: [hostelOwnerId], references: [id], onDelete: Cascade)
+  amenity         Amenity     @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+  
+  @@unique([hostelOwnerId, amenityId])
+}
+
+model RoomAmenity {
+  id              Int         @id @default(autoincrement())
+  roomId          Int
+  amenityId       Int
+  
+  room            Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  amenity         Amenity     @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+  
+  @@unique([roomId, amenityId])
 }
 
 model Booking {
-  id             Int           @id @default(autoincrement())
-  userId         Int
-  hostelOwnerId  Int
-  userName       String
-  email          String        
-  phoneNumber    String       
-  bookingDate    DateTime      @default(now())
-  checkInDate    DateTime
-  noOfPeople     Int
-  status         BookingStatus @default(PENDING)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-
-  user           User          @relation(fields: [userId], references: [id])
-  hostelOwner    HostelOwner   @relation(fields: [hostelOwnerId], references: [id])
-
-  payments       Payment[]     
+  id              Int             @id @default(autoincrement())
+  userId          Int
+  hostelOwnerId   Int
+  userName        String
+  email           String
+  phoneNumber     String
+  bookingDate     DateTime        @default(now())
+  checkInDate     DateTime
+  duration        Int             // Duration in months
+  specialRequests String?         @db.Text
+  status          BookingStatus   @default(PENDING)
+  totalAmount     Float
+  paymentStatus   PaymentStatus   @default(PENDING)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  user            User            @relation(fields: [userId], references: [id])
+  hostelOwner     HostelOwner     @relation(fields: [hostelOwnerId], references: [id])
+  payments        Payment[]
+  bookingRooms    BookingRoom[]
+  bookingBeds     BookingBed[]
 }
 
+model BookingRoom {
+  id              Int         @id @default(autoincrement())
+  bookingId       Int
+  roomId          Int
+  
+  booking         Booking     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  room            Room        @relation(fields: [roomId], references: [id])
+  
+  @@unique([bookingId, roomId])
+}
 
-enum BookingStatus {
-  PENDING
-  CONFIRMED
-  CANCELLED
+model BookingBed {
+  id              Int         @id @default(autoincrement())
+  bookingId       Int
+  bedId           Int
+  
+  booking         Booking     @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bed             Bed         @relation(fields: [bedId], references: [id])
+  
+  @@unique([bookingId, bedId])
 }
 
 model Payment {
-  id             Int           @id @default(autoincrement())
-  bookingId      Int
-  amount         Float
-  pidx           String       @unique
-  paymentDate    DateTime      @default(now())
-  paymentStatus  PaymentStatus @default(PENDING)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-
-  booking        Booking       @relation(fields: [bookingId], references: [id])
+  id                Int            @id @default(autoincrement())
+  bookingId         Int
+  amount            Float
+  pidx              String         @unique
+  paymentDate       DateTime       @default(now())
+  paymentMethod     PaymentMethod  @default(ONLINE)
+  paymentStatus     PaymentStatus  @default(PENDING)
+  paymentType       PaymentType    @default(BOOKING_PAYMENT)
+  transactionDetails String?       @db.Text
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  
+  booking           Booking        @relation(fields: [bookingId], references: [id])
 }
 
-enum PaymentStatus {
-  PENDING
-  COMPLETED
-  FAILED
+model Review {
+  id              Int         @id @default(autoincrement())
+  userId          Int
+  hostelOwnerId   Int
+  rating          Float
+  comment         String?     @db.Text
+  photos          String?     @db.Text // JSON string of photo URLs
+  isVisible       Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  user            User        @relation(fields: [userId], references: [id])
+  hostelOwner     HostelOwner @relation(fields: [hostelOwnerId], references: [id])
+}
+
+model Staff {
+  id              Int         @id @default(autoincrement())
+  hostelOwnerId   Int
+  name            String
+  role            StaffRole
+  shift           ShiftType
+  contact         String
+  email           String?
+  status          StaffStatus @default(ON_DUTY)
+  photo           String?
+  joiningDate     DateTime    @default(now())
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  hostelOwner     HostelOwner @relation(fields: [hostelOwnerId], references: [id], onDelete: Cascade)
+}
+
+model Chat {
+  id              Int         @id @default(autoincrement())
+  userId          Int
+  hostelOwnerId   Int
+  createdAt       DateTime    @default(now())
+  
+  user            User        @relation("UserChats", fields: [userId], references: [id])
+  hostelOwner     HostelOwner @relation("HostelOwnerChats", fields: [hostelOwnerId], references: [id])
+  messages        Message[]
+  
+  @@unique([userId, hostelOwnerId])
+}
+
+model Message {
+  id              Int         @id @default(autoincrement())
+  chatId          Int
+  senderId        Int
+  senderType      SenderType
+  content         String      @db.Text
+  timestamp       DateTime    @default(now())
+  isRead          Boolean     @default(false)
+  
+  chat            Chat        @relation(fields: [chatId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id              Int              @id @default(autoincrement())
+  userId          Int
+  title           String
+  message         String           @db.Text
+  isRead          Boolean          @default(false)
+  type            NotificationType
+  createdAt       DateTime         @default(now())
+  
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model HostelOwnerNotification {
+  id              Int              @id @default(autoincrement())
+  hostelOwnerId   Int
+  title           String
+  message         String           @db.Text
+  isRead          Boolean          @default(false)
+  type            NotificationType
+  createdAt       DateTime         @default(now())
+  
+  hostelOwner     HostelOwner      @relation(fields: [hostelOwnerId], references: [id], onDelete: Cascade)
 }
 
 enum UserRole {
   ADMIN
   HOSTEL_OWNER
   STUDENT
+}
+
+enum GenderPolicy {
+  MALE_ONLY
+  FEMALE_ONLY
+  COED
+}
+
+enum BedType {
+  SINGLE
+  DOUBLE
+  BUNK
+}
+
+enum RoomType {
+  DORMITORY     // Multiple beds for multiple people
+  SHARED_2      // 2-bed room
+  SHARED_3      // 3-bed room
+  SHARED_4      // 4-bed room
+  SINGLE_ROOM   // Private room with one bed
+  DOUBLE_ROOM   // Private room with two beds
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  ONLINE
+  CASH
+  BANK_TRANSFER
+  UPI
+}
+
+enum PaymentType {
+  BOOKING_PAYMENT  // Initial booking amount
+  SECURITY_DEPOSIT // Refundable security deposit
+  MONTHLY_RENT     // Recurring monthly payments
+  EXTENSION        // Payment for extending stay
+  ADDITIONAL_SERVICES // Extra services like laundry, meals, etc.
+}
+
+enum AmenityCategory {
+  GENERAL
+  SECURITY
+  ENTERTAINMENT
+  CLEANING
+  FOOD
+  UTILITIES
+  STUDY
+  BATHROOM
+  SPORTS
+}
+
+enum StaffRole {
+  RECEPTION
+  HOUSEKEEPING
+  MAINTENANCE
+  KITCHEN
+  SECURITY
+  MANAGER
+  WARDEN
+}
+
+enum ShiftType {
+  MORNING
+  EVENING
+  NIGHT
+}
+
+enum StaffStatus {
+  ON_DUTY
+  ON_LEAVE
+}
+
+enum SenderType {
+  USER
+  HOSTEL_OWNER
+}
+
+enum NotificationType {
+  BOOKING
+  PAYMENT
+  SYSTEM
+  MESSAGE
+  MAINTENANCE
 }

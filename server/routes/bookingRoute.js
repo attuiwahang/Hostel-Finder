@@ -8,9 +8,9 @@ const {
     deleteBooking,
     getBookingStats,
     createPayment,
-    updatePaymentStatus
+    updatePaymentStatus,createBookingByHostelOwner
   } = require("../controller/BookingController");
-  
+  const { authMiddleware } = require("../middleware/authMiddleware");
   const { 
     Payment, 
     confirmPayment 
@@ -22,15 +22,17 @@ const {
   router.post("/", bookHostel);
   router.get("/", getAllBookings);
   router.get("/stats", getBookingStats);
-  router.get("/:id", getBookingById);
-  router.patch("/:id/status", updateBookingStatus);
+  router.get("/singleBooking/:id", getBookingById);
+  router.put("/:id", updateBookingStatus);
   router.delete("/:id", deleteBooking);
   
   // User-specific booking routes
-  router.get("/user/:userId", getUserBookings);
+  router.get("/userBookings", authMiddleware, getUserBookings);
   
   // Hostel owner-specific booking routes
-  router.get("/hostel/:hostelOwnerId", getHostelOwnerBookings);
+  router.get("/:hostelOwnerId", getHostelOwnerBookings);
+  router.post("/direct-booking", authMiddleware, createBookingByHostelOwner); // New endpoint for hostel owners
+
   
   // Payment routes (from original controller)
   router.post('/payment', Payment);

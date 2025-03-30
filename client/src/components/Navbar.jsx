@@ -3,7 +3,6 @@ import Cookies from "js-cookie";
 import logo from "../assets/logo.png";
 import notification from "../assets/notification.png";
 import { Link, NavLink, useNavigate } from "react-router-dom";
-import { IoIosNotifications } from "react-icons/io";
 import { CiLogout } from "react-icons/ci";
 
 const Navbar = () => {
@@ -50,7 +49,7 @@ const Navbar = () => {
         <div className="flex gap-6 text-[#F9F9FF]">
           <Link to="/">Home</Link>
           <Link to="/hostels">Hostels</Link>
-          <Link to="/Booking">Booking</Link>
+          <Link to="/bookings">Booking</Link>
           <Link to="/AboutUs">About Us</Link>
 
           {isLoggedIn ? (

@@ -12,13 +12,14 @@ exports.bookHostel = async (req, res) => {
       phoneNumber,
       checkInDate,
       noOfPeople,
+      duration,
+      totalAmount,
+      specialRequests
     } = req.body;
 
-    console.log("Received request body:", req.body);
-
     // Validate required fields
-    if (!userId || !hostelOwnerId || !userName || !email || !phoneNumber || !checkInDate || !noOfPeople) {
-      return res.status(400).json({ message: "All fields are required" });
+    if (!userId || !hostelOwnerId || !email || !phoneNumber || !checkInDate) {
+      return res.status(400).json({ message: "All required fields must be provided" });
     }
 
     // Ensure checkInDate is a valid date
@@ -45,20 +46,44 @@ exports.bookHostel = async (req, res) => {
       return res.status(404).json({ message: "Hostel not found" });
     }
 
+    // Create the booking with proper relations
     const newBooking = await prisma.booking.create({
       data: {
-        userId: Number(userId),
-        hostelOwnerId: Number(hostelOwnerId),
-        userName,
+        userName: userName || user.name,
         email,
         phoneNumber,
         checkInDate: checkInDateObj,
-        noOfPeople: Number(noOfPeople),
+        duration: Number(duration) || 1,
+        specialRequests,
         status: "PENDING",
+        paymentStatus: "PENDING",
+        totalAmount: totalAmount || hostelOwner.startingPrice,
+        // Use connect to establish relationship with existing records
+        user: {
+          connect: { id: Number(userId) }
+        },
+        hostelOwner: {
+          connect: { id: Number(hostelOwnerId) }
+        }
       },
     });
 
+    // Create notification for hostel owner
+    // await prisma.HostelOwnerNotification.create({
+    //   data: {
+    //     hostelOwnerId: Number(hostelOwnerId),
+    //     title: "New Booking Request",
+    //     message: `${userName || user.name} has requested a booking starting on ${checkInDateObj.toLocaleDateString()}.`,
+    //     type: "BOOKING",
+    //     isRead: false,
+    //     hostelOwner: {
+    //       connect: { id: Number(hostelOwnerId) }
+    //     }
+    //   }
+    // });
+
     return res.status(201).json({
+      success: true,
       message: "Booking created successfully",
       booking: newBooking,
     });
@@ -67,16 +92,16 @@ exports.bookHostel = async (req, res) => {
     console.error("Error booking hostel:", error);
 
     if (error.code === "P2002") {
-      return res.status(400).json({ message: "A booking with this email already exists" });
+      return res.status(400).json({ success: false, message: "A booking with this information already exists" });
     }
 
     return res.status(500).json({
+      success: false,
       message: "An error occurred while booking the hostel",
       error: error.message,
     });
   }
 };
-
 // Get all bookings (with optional filters)
 exports.getAllBookings = async (req, res) => {
   try {
@@ -194,7 +219,7 @@ exports.getBookingById = async (req, res) => {
 // Get bookings for a specific user
 exports.getUserBookings = async (req, res) => {
   try {
-    const { userId } = req.params;
+    const  userId  = req.user.id;
     const { status, page = 1, limit = 10 } = req.query;
     
     // Build filter object
@@ -221,7 +246,8 @@ exports.getUserBookings = async (req, res) => {
             hostelName: true,
             location: true,
             contact: true,
-            mainPhoto: true
+            mainPhoto: true,
+            email: true
           }
         },
         payments: true
@@ -454,10 +480,21 @@ exports.getBookingStats = async (req, res) => {
       LIMIT 5
     `;
     
+    // Convert BigInt values to regular numbers
+    const processResults = (data) => {
+      return data.map(item => {
+        const processed = {};
+        for (const [key, value] of Object.entries(item)) {
+          processed[key] = typeof value === 'bigint' ? Number(value) : value;
+        }
+        return processed;
+      });
+    };
+    
     return res.status(200).json({
-      bookingsByStatus,
-      recentBookings,
-      topHostels
+      bookingsByStatus: processResults(bookingsByStatus),
+      recentBookings: processResults(recentBookings),
+      topHostels: processResults(topHostels)
     });
   } catch (error) {
     console.error("Error fetching booking statistics:", error);
@@ -567,3 +604,145 @@ exports.updatePaymentStatus = async (req, res) => {
     });
   }
 };
+
+// Create a booking by hostel owner
+exports.createBookingByHostelOwner = async (req, res) => {
+  try {
+    const {
+     
+      userName,
+      email,
+      phoneNumber,
+      checkInDate,
+      duration,
+      specialRequests,
+      totalAmount
+    } = req.body;
+
+    const hostelOwnerId = req.user.id
+
+    // Validate required fields
+    if (!hostelOwnerId || !userName || !email || !phoneNumber || !checkInDate || !duration || !totalAmount) {
+      return res.status(400).json({ message: "All required fields must be provided" });
+    }
+
+    // Ensure checkInDate is a valid date
+    const checkInDateObj = new Date(checkInDate);
+    if (isNaN(checkInDateObj.getTime())) {
+      return res.status(400).json({ message: "Invalid check-in date format" });
+    }
+
+    // Verify that the hostel owner exists
+    const hostelOwner = await prisma.hostelOwner.findUnique({
+      where: { id: Number(hostelOwnerId) }
+    });
+
+    if (!hostelOwner) {
+      return res.status(404).json({ message: "Hostel owner not found" });
+    }
+
+    // Find or create user by email
+    let user = await prisma.user.findUnique({
+      where: { email }
+    });
+
+    if (!user) {
+      // Create a new user with generated password
+      const tempPassword = Math.random().toString(36).slice(-8);
+      user = await prisma.user.create({
+        data: {
+          name: userName,
+          email,
+          password: tempPassword, // In production, should hash this password
+          contact: phoneNumber,
+          role: "STUDENT"
+        }
+      });
+    }
+
+    // Generate a unique booking number in the format "BK-XXXX"
+    const lastBooking = await prisma.booking.findFirst({
+      orderBy: { id: 'desc' }
+    });
+    
+    const nextId = lastBooking ? lastBooking.id + 1 : 1;
+    const bookingNumber = `BK-${nextId.toString().padStart(4, '0')}`;
+
+    // Create booking data
+    const bookingData = {
+      userId: user.id,
+      hostelOwnerId: Number(hostelOwnerId),
+      bookingNumber,
+      userName,
+      email,
+      phoneNumber,
+      checkInDate: checkInDateObj,
+      duration: Number(duration),
+      specialRequests: specialRequests || "",
+      status: "CONFIRMED", // Direct bookings are automatically confirmed
+      totalAmount: parseFloat(totalAmount),
+      paymentStatus: "PENDING" // Default payment status
+    };
+
+    // Create the booking
+    const newBooking = await prisma.booking.create({
+      data: bookingData
+    });
+
+    return res.status(201).json({
+      message: "Booking created successfully",
+      booking: newBooking,
+    });
+
+  } catch (error) {
+    console.error("Error creating booking:", error);
+    
+    // Handle unique constraint violation
+    if (error.code === 'P2002' && error.meta?.target?.includes('bookingNumber')) {
+      return res.status(400).json({ 
+        message: "A booking with this number already exists. Please try again." 
+      });
+    }
+
+    return res.status(500).json({
+      message: "An error occurred while creating the booking",
+      error: error.message,
+    });
+  }
+};
+
+// Helper function to generate a unique booking number
+function generateBookingNumber() {
+  const prefix = 'BK';
+  const timestamp = Date.now().toString().slice(-6);
+  const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+  return `${prefix}${timestamp}${random}`;
+}
+
+// Helper function to generate a temporary password
+function generateTemporaryPassword() {
+  return Math.random().toString(36).slice(-8);
+}
+
+// Helper function to get or create a special "walk-in" user
+async function getOrCreateWalkInUser() {
+  const walkInEmail = "walk-in@hostel-system.com";
+  
+  let walkInUser = await prisma.user.findUnique({
+    where: { email: walkInEmail }
+  });
+  
+  if (!walkInUser) {
+    walkInUser = await prisma.user.create({
+      data: {
+        name: "Walk-in Customer",
+        email: walkInEmail,
+        password: "walk-in-user-password", // Should be a secure password in production
+        contact: "N/A",
+        role: "STUDENT"
+      }
+    });
+  }
+  
+  return walkInUser;
+}

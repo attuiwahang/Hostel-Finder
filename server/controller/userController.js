@@ -55,7 +55,6 @@ exports.registerUser = async (req, res) => {
   }
 };
 
-
 exports.registerOwner = async (req, res) => {
   try {
     const {
@@ -69,6 +68,7 @@ exports.registerOwner = async (req, res) => {
       latitude,
       longitude,
       description,
+      gender,
     } = req.body;
 
     // Check that a file was uploaded
@@ -81,7 +81,7 @@ exports.registerOwner = async (req, res) => {
     console.log("Uploaded file:", req.file);
     console.log("Request body:", req.body);
 
-    // Validate all required fields (excluding mainPhoto since it's handled by multer)
+    // Validate essential fields 
     if (
       !hostelName ||
       !ownerName ||
@@ -94,7 +94,7 @@ exports.registerOwner = async (req, res) => {
       longitude === undefined ||
       !description
     ) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({ message: "All required fields must be filled" });
     }
 
     // Check for an existing user
@@ -106,7 +106,11 @@ exports.registerOwner = async (req, res) => {
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create the new hostel owner
+    // Default values for optional fields
+    const genderPolicy = gender || 'COED';
+    const startingPrice = 0; // Will be updated later
+
+    // Create the new hostel owner with only essential fields
     const newHostelOwner = await prisma.hostelOwner.create({
       data: {
         hostelName,
@@ -119,36 +123,38 @@ exports.registerOwner = async (req, res) => {
         latitude: parseFloat(latitude) || 0,
         longitude: parseFloat(longitude) || 0,
         description,
-        mainPhoto: process.env.IMAGE_URL + filename, // Ensure IMAGE_URL is set in your .env file
+        mainPhoto: process.env.IMAGE_URL + filename,
+        startingPrice,
+        gender: genderPolicy,
+        isApproved: false,
+        isVerified: false,
+        // Other fields like rules, checkInTime, checkOutTime, amenities, etc. 
+        // will be updated later through separate endpoints
       },
     });
 
     res.status(201).json({
       message: "Hostel owner registered successfully",
-      newHostelOwner,
+      ownerId: newHostelOwner.id,
+      email: newHostelOwner.email
     });
   } catch (error) {
     console.error("Error registering hostel owner:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
-}
-
+};
 
 exports.loginUser = async (req, res) => {
   const { email, password } = req.body;
 
-  console.log(req.body);
-
   if (!email || !password) {
       return res.status(400).json({ message: 'Email and password are required.' });
   }
-
   try {
      
       let user = await prisma.user.findUnique({ where: { email } });
 
       if (user) {
-          
           const isPasswordMatched = await bcrypt.compare(password, user.password);
           if (!isPasswordMatched) {
               return res.status(401).json({ message: 'Invalid password.' });
@@ -165,6 +171,7 @@ exports.loginUser = async (req, res) => {
               message: 'Login successful',
               token,
               role: user.role,
+              info: user
           });
       }
 
@@ -194,6 +201,7 @@ exports.loginUser = async (req, res) => {
               message: 'Login successful',
               token,
               role: 'hostelOwner',
+              info: owner
           });
       }
 
@@ -205,7 +213,6 @@ exports.loginUser = async (req, res) => {
       res.status(500).json({ message: 'Server error. Please try again later.' });
   }
 };
-
 
 exports.getUserForVerification = async (req, res) => {
   try {

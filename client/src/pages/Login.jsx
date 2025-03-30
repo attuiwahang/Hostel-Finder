@@ -20,6 +20,9 @@ const Login = () => {
       const response = await axios.post("http://localhost:8870/login", { email, password });
       console.log(response.data);
 
+      localStorage.setItem('info', JSON.stringify(response.data.info))
+      localStorage.setItem('Token', JSON.stringify(response.data.token))
+
       switch (response.data.role) {
         case "STUDENT":
           navigate("/student-dashboard");
