@@ -1,6 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-const jwt = require('jsonwebtoken'); // You'll need to install this package
+const jwt = require('jsonwebtoken');
 
 let io;
 
@@ -51,7 +51,6 @@ const initializeSocket = (server) => {
           userId: userId !== null ? userId : 'not provided', 
           hostelOwnerId: hostelOwnerId !== null ? hostelOwnerId : 'not provided',
           tokenPresent: !!cleanToken,
-          cleanToken
         });
         
         // Store cleaned token
@@ -63,6 +62,9 @@ const initializeSocket = (server) => {
           socket.userId = parsedUserId;
           socket.join(`user_${parsedUserId}`);
           console.log(`User ${parsedUserId} authenticated`);
+          
+          // Fetch unread notifications count after authentication
+          fetchAndSendUnreadNotificationsCount(socket, 'USER', parsedUserId);
         }
         
         // Set hostelOwnerId if provided
@@ -71,6 +73,9 @@ const initializeSocket = (server) => {
           socket.hostelOwnerId = parsedHostelOwnerId;
           socket.join(`hostelOwner_${parsedHostelOwnerId}`);
           console.log(`Hostel Owner ${parsedHostelOwnerId} authenticated`);
+          
+          // Fetch unread notifications count after authentication
+          fetchAndSendUnreadNotificationsCount(socket, 'HOSTEL_OWNER', parsedHostelOwnerId);
         }
         
         // Mark socket as authenticated
@@ -85,6 +90,178 @@ const initializeSocket = (server) => {
       } catch (error) {
         console.error(`Authentication error for socket ${socket.id}:`, error);
         socket.emit("error", { message: "Authentication failed: " + error.message });
+      }
+    });
+
+    // NOTIFICATION-SPECIFIC EVENTS
+
+    // Fetch notifications
+    socket.on("fetch_notifications", async ({ type, page = 1, limit = 10 }) => {
+      try {
+        if (!socket.authenticated) {
+          socket.emit("error", { message: "Authentication required" });
+          return;
+        }
+
+        let notifications = [];
+        let totalCount = 0;
+        
+        // Determine user type and ID
+        const isUser = !!socket.userId;
+        const isHostelOwner = !!socket.hostelOwnerId;
+        
+        // Calculate pagination
+        const skip = (page - 1) * limit;
+        
+        if (isUser) {
+          // Fetch user notifications
+          [notifications, totalCount] = await Promise.all([
+            prisma.notification.findMany({
+              where: { userId: socket.userId },
+              orderBy: { createdAt: 'desc' },
+              skip,
+              take: limit,
+            }),
+            prisma.notification.count({
+              where: { userId: socket.userId }
+            })
+          ]);
+        } else if (isHostelOwner) {
+          // Fetch hostel owner notifications
+          [notifications, totalCount] = await Promise.all([
+            prisma.hostelOwnerNotification.findMany({
+              where: { hostelOwnerId: socket.hostelOwnerId },
+              orderBy: { createdAt: 'desc' },
+              skip,
+              take: limit,
+            }),
+            prisma.hostelOwnerNotification.count({
+              where: { hostelOwnerId: socket.hostelOwnerId }
+            })
+          ]);
+        }
+        
+        socket.emit("notifications_list", {
+          notifications,
+          pagination: {
+            total: totalCount,
+            page,
+            limit,
+            totalPages: Math.ceil(totalCount / limit)
+          }
+        });
+      } catch (error) {
+        console.error("Error fetching notifications:", error);
+        socket.emit("error", { message: "Failed to fetch notifications: " + error.message });
+      }
+    });
+
+    // Mark notification as read
+    socket.on("mark_notification_read", async ({ notificationId, userType }) => {
+      try {
+        if (!socket.authenticated) {
+          socket.emit("error", { message: "Authentication required" });
+          return;
+        }
+        
+        if (!notificationId) {
+          socket.emit("error", { message: "Notification ID is required" });
+          return;
+        }
+        
+        const isUser = userType === 'USER' && !!socket.userId;
+        const isHostelOwner = userType === 'HOSTEL_OWNER' && !!socket.hostelOwnerId;
+        
+        let updatedNotification;
+        
+        if (isUser) {
+          // Update user notification
+          updatedNotification = await prisma.notification.update({
+            where: { 
+              id: parseInt(notificationId),
+              userId: socket.userId  // Ensure the notification belongs to this user
+            },
+            data: { isRead: true }
+          });
+          
+          // Send updated unread count
+          fetchAndSendUnreadNotificationsCount(socket, 'USER', socket.userId);
+        } else if (isHostelOwner) {
+          // Update hostel owner notification
+          updatedNotification = await prisma.hostelOwnerNotification.update({
+            where: { 
+              id: parseInt(notificationId),
+              hostelOwnerId: socket.hostelOwnerId  // Ensure the notification belongs to this hostel owner
+            },
+            data: { isRead: true }
+          });
+          
+          // Send updated unread count
+          fetchAndSendUnreadNotificationsCount(socket, 'HOSTEL_OWNER', socket.hostelOwnerId);
+        } else {
+          socket.emit("error", { message: "Invalid user type or not authenticated" });
+          return;
+        }
+        
+        socket.emit("notification_marked_read", {
+          notificationId: updatedNotification.id,
+          success: true
+        });
+      } catch (error) {
+        console.error("Error marking notification as read:", error);
+        socket.emit("error", { message: "Failed to mark notification as read: " + error.message });
+      }
+    });
+
+    // Mark all notifications as read
+    socket.on("mark_all_notifications_read", async ({ userType }) => {
+      try {
+        if (!socket.authenticated) {
+          socket.emit("error", { message: "Authentication required" });
+          return;
+        }
+        
+        const isUser = userType === 'USER' && !!socket.userId;
+        const isHostelOwner = userType === 'HOSTEL_OWNER' && !!socket.hostelOwnerId;
+        
+        let result;
+        
+        if (isUser) {
+          // Update all user notifications
+          result = await prisma.notification.updateMany({
+            where: { 
+              userId: socket.userId,
+              isRead: false
+            },
+            data: { isRead: true }
+          });
+          
+          // Send updated unread count (should be 0)
+          socket.emit("unread_notifications_count", { count: 0 });
+        } else if (isHostelOwner) {
+          // Update all hostel owner notifications
+          result = await prisma.hostelOwnerNotification.updateMany({
+            where: { 
+              hostelOwnerId: socket.hostelOwnerId,
+              isRead: false
+            },
+            data: { isRead: true }
+          });
+          
+          // Send updated unread count (should be 0)
+          socket.emit("unread_notifications_count", { count: 0 });
+        } else {
+          socket.emit("error", { message: "Invalid user type or not authenticated" });
+          return;
+        }
+        
+        socket.emit("all_notifications_marked_read", {
+          count: result.count,
+          success: true
+        });
+      } catch (error) {
+        console.error("Error marking all notifications as read:", error);
+        socket.emit("error", { message: "Failed to mark all notifications as read: " + error.message });
       }
     });
 
@@ -218,40 +395,56 @@ const initializeSocket = (server) => {
         // Create notification for the recipient
         if (senderType === 'USER') {
           // Create notification for hostel owner
-          await prisma.hostelOwnerNotification.create({
+          const notification = await prisma.hostelOwnerNotification.create({
             data: {
               hostelOwnerId: chat.hostelOwnerId,
               title: 'New Message',
               message: `You have a new message from ${chat.user.name}`,
               type: 'MESSAGE',
-              isRead: false
+              isRead: false,
+              linkUrl: `/chats/${chat.id}`
             }
           });
 
           // Notify hostel owner via socket
           io.to(`hostelOwner_${chat.hostelOwnerId}`).emit("new_notification", {
-            type: 'MESSAGE',
+            ...notification,
             chatId: chat.id,
-            message: `New message from ${chat.user.name}`
+            sender: {
+              id: chat.user.id,
+              name: chat.user.name,
+              image: chat.user.profileImage
+            }
           });
+          
+          // Send updated unread count to hostel owner
+          fetchAndSendUnreadNotificationsCount(io, 'HOSTEL_OWNER', chat.hostelOwnerId);
         } else {
           // Create notification for user
-          await prisma.notification.create({
+          const notification = await prisma.notification.create({
             data: {
               userId: chat.userId,
               title: 'New Message',
               message: `You have a new message from ${chat.hostelOwner.hostelName}`,
               type: 'MESSAGE',
-              isRead: false
+              isRead: false,
+              linkUrl: `/chats/${chat.id}`
             }
           });
 
           // Notify user via socket
           io.to(`user_${chat.userId}`).emit("new_notification", {
-            type: 'MESSAGE',
+            ...notification,
             chatId: chat.id,
-            message: `New message from ${chat.hostelOwner.hostelName}`
+            sender: {
+              id: chat.hostelOwner.id,
+              name: chat.hostelOwner.hostelName,
+              image: chat.hostelOwner.mainPhoto
+            }
           });
+          
+          // Send updated unread count to user
+          fetchAndSendUnreadNotificationsCount(io, 'USER', chat.userId);
         }
 
         // Send acknowledgment back to sender
@@ -381,6 +574,13 @@ const initializeSocket = (server) => {
             readerId: parsedReaderId,
             count: result.count
           });
+          
+          // Also mark related notifications as read
+          if (result.count > 0) {
+            await markRelatedNotificationsAsRead('USER', socket.userId, chat.id);
+            // Update notification count
+            fetchAndSendUnreadNotificationsCount(socket, 'USER', socket.userId);
+          }
         } else {
           io.to(`user_${chat.userId}`).emit("messages_read", {
             chatId: parsedChatId,
@@ -388,6 +588,13 @@ const initializeSocket = (server) => {
             readerId: parsedReaderId,
             count: result.count
           });
+          
+          // Also mark related notifications as read
+          if (result.count > 0) {
+            await markRelatedNotificationsAsRead('HOSTEL_OWNER', socket.hostelOwnerId, chat.id);
+            // Update notification count
+            fetchAndSendUnreadNotificationsCount(socket, 'HOSTEL_OWNER', socket.hostelOwnerId);
+          }
         }
 
         console.log(`${result.count} messages marked as read in chat ${parsedChatId} by ${readerType} ${parsedReaderId}`);
@@ -416,7 +623,83 @@ const initializeSocket = (server) => {
   return io;
 };
 
-// Rest of the file remains unchanged
+// HELPER FUNCTIONS
+
+// Fetch and send unread notifications count
+async function fetchAndSendUnreadNotificationsCount(socketOrIo, userType, id) {
+  try {
+    let count = 0;
+    
+    if (userType === 'USER') {
+      count = await prisma.notification.count({
+        where: {
+          userId: id,
+          isRead: false
+        }
+      });
+      
+      if (socketOrIo.to) {
+        // Using io
+        socketOrIo.to(`user_${id}`).emit("unread_notifications_count", { count });
+      } else {
+        // Using socket
+        socketOrIo.emit("unread_notifications_count", { count });
+      }
+    } else if (userType === 'HOSTEL_OWNER') {
+      count = await prisma.hostelOwnerNotification.count({
+        where: {
+          hostelOwnerId: id,
+          isRead: false
+        }
+      });
+      
+      if (socketOrIo.to) {
+        // Using io
+        socketOrIo.to(`hostelOwner_${id}`).emit("unread_notifications_count", { count });
+      } else {
+        // Using socket
+        socketOrIo.emit("unread_notifications_count", { count });
+      }
+    }
+  } catch (error) {
+    console.error("Error fetching notification count:", error);
+  }
+}
+
+// Mark related notifications as read (when user reads messages in a chat)
+async function markRelatedNotificationsAsRead(userType, userId, chatId) {
+  try {
+    if (userType === 'USER') {
+      await prisma.notification.updateMany({
+        where: {
+          userId: userId,
+          type: 'MESSAGE',
+          linkUrl: `/chats/${chatId}`,
+          isRead: false
+        },
+        data: {
+          isRead: true
+        }
+      });
+    } else if (userType === 'HOSTEL_OWNER') {
+      await prisma.hostelOwnerNotification.updateMany({
+        where: {
+          hostelOwnerId: userId,
+          type: 'MESSAGE',
+          linkUrl: `/chats/${chatId}`,
+          isRead: false
+        },
+        data: {
+          isRead: true
+        }
+      });
+    }
+  } catch (error) {
+    console.error("Error marking related notifications as read:", error);
+  }
+}
+
+// Get the io instance
 const getIO = () => {
   if (!io) {
     throw new Error('Socket.IO not initialized');
@@ -424,10 +707,12 @@ const getIO = () => {
   return io;
 };
 
+// Safely get io instance (does not throw an error if not initialized)
 const safeGetIO = () => {
   return io;
 };
 
+// Emit event to room
 const emitToRoom = (room, event, data) => {
   const socketIO = safeGetIO();
   if (!socketIO) {
@@ -444,6 +729,7 @@ const emitToRoom = (room, event, data) => {
   }
 };
 
+// Emit event to user
 const emitToUser = (userId, event, data) => {
   const socketIO = safeGetIO();
   if (!socketIO) {
@@ -460,6 +746,7 @@ const emitToUser = (userId, event, data) => {
   }
 };
 
+// Emit event to hostel owner
 const emitToHostelOwner = (hostelOwnerId, event, data) => {
   const socketIO = safeGetIO();
   if (!socketIO) {
@@ -476,6 +763,7 @@ const emitToHostelOwner = (hostelOwnerId, event, data) => {
   }
 };
 
+// Broadcast event to all clients
 const broadcastToAll = (event, data) => {
   const socketIO = safeGetIO();
   if (!socketIO) {
@@ -492,6 +780,254 @@ const broadcastToAll = (event, data) => {
   }
 };
 
+// Create a notification for a user
+const createUserNotification = async (userId, title, message, type, linkUrl = null) => {
+  try {
+    const notification = await prisma.notification.create({
+      data: {
+        userId,
+        title,
+        message,
+        type,
+        linkUrl,
+        isRead: false
+      }
+    });
+    
+    // Send notification via socket
+    emitToUser(userId, "new_notification", notification);
+    
+    // Update unread count
+    const count = await prisma.notification.count({
+      where: {
+        userId,
+        isRead: false
+      }
+    });
+    
+    emitToUser(userId, "unread_notifications_count", { count });
+    
+    return notification;
+  } catch (error) {
+    console.error("Error creating user notification:", error);
+    return null;
+  }
+};
+
+// Create a notification for a hostel owner
+const createHostelOwnerNotification = async (hostelOwnerId, title, message, type, linkUrl = null) => {
+  try {
+    const notification = await prisma.hostelOwnerNotification.create({
+      data: {
+        hostelOwnerId,
+        title,
+        message,
+        type,
+        linkUrl,
+        isRead: false
+      }
+    });
+    
+    // Send notification via socket
+    emitToHostelOwner(hostelOwnerId, "new_notification", notification);
+    
+    // Update unread count
+    const count = await prisma.hostelOwnerNotification.count({
+      where: {
+        hostelOwnerId,
+        isRead: false
+      }
+    });
+    
+    emitToHostelOwner(hostelOwnerId, "unread_notifications_count", { count });
+    
+    return notification;
+  } catch (error) {
+    console.error("Error creating hostel owner notification:", error);
+    return null;
+  }
+};
+
+// Create a broadcast notification for all users or hostel owners
+const createBroadcastNotification = async (title, message, receiverType, type, linkUrl = null) => {
+  try {
+    // First, create the broadcast notification record
+    const broadcastNotification = await prisma.broadcastNotification.create({
+      data: {
+        title,
+        message,
+        receiverType,
+        type,
+        linkUrl,
+        isSent: false
+      }
+    });
+    
+    // Create individual notifications based on receiver type
+    if (receiverType === 'USER' || receiverType === 'ALL') {
+      // Get all users
+      const users = await prisma.user.findMany({
+        select: { id: true }
+      });
+      
+      // Create a notification for each user
+      const userNotifications = users.map(user => ({
+        userId: user.id,
+        title,
+        message,
+        type,
+        linkUrl,
+        isRead: false
+      }));
+      
+      // Batch create notifications
+      if (userNotifications.length > 0) {
+        await prisma.notification.createMany({
+          data: userNotifications
+        });
+        
+        // Notify each user via socket
+        users.forEach(user => {
+          emitToUser(user.id, "new_notification", {
+            title,
+            message,
+            type,
+            linkUrl,
+            createdAt: new Date()
+          });
+          
+          // We'll need to update unread counts for each user
+          fetchAndSendUnreadNotificationsCount(getIO(), 'USER', user.id);
+        });
+      }
+    }
+    
+    if (receiverType === 'HOSTEL_OWNER' || receiverType === 'ALL') {
+      // Get all hostel owners
+      const hostelOwners = await prisma.hostelOwner.findMany({
+        select: { id: true }
+      });
+      
+      // Create a notification for each hostel owner
+      const hostelOwnerNotifications = hostelOwners.map(owner => ({
+        hostelOwnerId: owner.id,
+        title,
+        message,
+        type,
+        linkUrl,
+        isRead: false
+      }));
+      
+      // Batch create notifications
+      if (hostelOwnerNotifications.length > 0) {
+        await prisma.hostelOwnerNotification.createMany({
+          data: hostelOwnerNotifications
+        });
+        
+        // Notify each hostel owner via socket
+        hostelOwners.forEach(owner => {
+          emitToHostelOwner(owner.id, "new_notification", {
+            title,
+            message,
+            type,
+            linkUrl,
+            createdAt: new Date()
+          });
+          
+          // Update unread counts for each hostel owner
+          fetchAndSendUnreadNotificationsCount(getIO(), 'HOSTEL_OWNER', owner.id);
+        });
+      }
+    }
+    
+    // Mark broadcast notification as sent
+    await prisma.broadcastNotification.update({
+      where: { id: broadcastNotification.id },
+      data: { isSent: true }
+    });
+    
+    return broadcastNotification;
+  } catch (error) {
+    console.error("Error creating broadcast notification:", error);
+    return null;
+  }
+};
+
+// Create booking notification
+const createBookingNotification = async (booking) => {
+  try {
+    // Notification for user
+    await createUserNotification(
+      booking.userId,
+      'Booking Update',
+      `Your booking for ${booking.hostelOwner.hostelName} has been ${booking.status.toLowerCase()}.`,
+      'BOOKING',
+      `/bookings/${booking.id}`
+    );
+    
+    // Notification for hostel owner
+    await createHostelOwnerNotification(
+      booking.hostelOwnerId,
+      'New Booking',
+      `${booking.userName} has made a booking starting on ${new Date(booking.checkInDate).toLocaleDateString()}.`,
+      'BOOKING',
+      `/hostel-owner/bookings/${booking.id}`
+    );
+    
+    return true;
+  } catch (error) {
+    console.error("Error creating booking notification:", error);
+    return false;
+  }
+};
+
+// Create payment notification
+const createPaymentNotification = async (payment, booking) => {
+  try {
+    // Notification for user
+    await createUserNotification(
+      booking.userId,
+      'Payment Update',
+      `Your payment of ${payment.amount} for booking #${booking.id} is ${payment.paymentStatus.toLowerCase()}.`,
+      'PAYMENT',
+      `/bookings/${booking.id}/payments`
+    );
+    
+    // Notification for hostel owner
+    await createHostelOwnerNotification(
+      booking.hostelOwnerId,
+      'Payment Received',
+      `Payment of ${payment.amount} received for booking by ${booking.userName}.`,
+      'PAYMENT',
+      `/hostel-owner/bookings/${booking.id}/payments`
+    );
+    
+    return true;
+  } catch (error) {
+    console.error("Error creating payment notification:", error);
+    return false;
+  }
+};
+
+// Create review notification
+const createReviewNotification = async (review, userDetails, hostelDetails) => {
+  try {
+    // Notification for hostel owner
+    await createHostelOwnerNotification(
+      review.hostelOwnerId,
+      'New Review',
+      `${userDetails.name} has left a ${review.rating}-star review for your hostel.`,
+      'REVIEW',
+      `/hostel-owner/reviews/${review.id}`
+    );
+    
+    return true;
+  } catch (error) {
+    console.error("Error creating review notification:", error);
+    return false;
+  }
+};
+
 module.exports = {
   initializeSocket,
   getIO,
@@ -499,5 +1035,11 @@ module.exports = {
   emitToRoom,
   emitToUser,
   emitToHostelOwner,
-  broadcastToAll
+  broadcastToAll,
+  createUserNotification,
+  createHostelOwnerNotification,
+  createBroadcastNotification,
+  createBookingNotification,
+  createPaymentNotification,
+  createReviewNotification
 };

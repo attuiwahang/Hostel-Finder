@@ -21,6 +21,7 @@ import ChatInterface from './pages/ChatInterface';
 import HostelInfo from './pages/HostelInfo';
 import ManageRooms from './pages/ManageRooms';
 import UserChat from './pages/UserChat';
+import NotificationsPage from './pages/NotificationsPage';
 
 function App() {
   const [count, setCount] = useState(0)
@@ -48,6 +49,7 @@ function App() {
       <Route path="/chat" element={<ChatInterface />} />
       <Route path="/userChat" element={<UserChat />} />
       <Route path="/info" element={<HostelInfo />} />
+      <Route path="/notifications" element={<NotificationsPage />} />
       
     </Routes>
   </BrowserRouter>

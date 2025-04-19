@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import Cookies from "js-cookie";
 import logo from "../assets/logo.png";
-import notification from "../assets/notification.png";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { CiLogout } from "react-icons/ci";
-
+import NotificationDropdown from "./UserNotification"; 
 const Navbar = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -53,13 +52,11 @@ const Navbar = () => {
           <Link to="/AboutUs">About Us</Link>
 
           {isLoggedIn ? (
-            <div className="flex items-center gap-4 relative" ref={dropdownRef}>
-              <img
-                src={notification}
-                alt="notification"
-                className="h-4 w-4 cursor-pointer"
-              />
-              <div className="relative">
+            <div className="flex items-center gap-4 relative">
+              {/* Replace the notification image with the NotificationDropdown component */}
+              <NotificationDropdown />
+              
+              <div className="relative" ref={dropdownRef}>
                 <img
                   src="https://www.shutterstock.com/image-vector/vector-flat-illustration-grayscale-avatar-600nw-2264922221.jpg"
                   alt="User"
@@ -68,11 +65,11 @@ const Navbar = () => {
                 />
                 {isDropdownOpen && (
                   <div
-                    className="absolute right-0 mt-2 w-48  bg-red-700 rounded-md shadow-lg "
+                    className="absolute right-0 mt-2 w-48 bg-red-700 rounded-md shadow-lg"
                     onMouseLeave={() => setIsDropdownOpen(false)}
                   >
                     <div className="py-2 px-3 hover:bg-gray-100 cursor-pointer bg-white flex gap-2 items-center">
-                    <CiLogout  className="text-gray-600 font-bold"/>
+                      <CiLogout className="text-gray-600 font-bold" />
                       <button
                         onClick={handleSignOut}
                         className="w-full text-left text-sm text-gray-700"

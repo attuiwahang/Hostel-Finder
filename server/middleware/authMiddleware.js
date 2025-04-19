@@ -25,7 +25,7 @@ const authMiddleware = async (req, res, next) => {
         success: false,
         message: 'Invalid authentication token'
       });
-    }
+    } 
 
     // Remove any possible quotes and whitespace
     token = token.replace(/^["'](.*)["']$/, '$1').trim();

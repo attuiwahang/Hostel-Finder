@@ -266,6 +266,7 @@ model Message {
   chat            Chat        @relation(fields: [chatId], references: [id], onDelete: Cascade)
 }
 
+// Updated Notification Models
 model Notification {
   id              Int              @id @default(autoincrement())
   userId          Int
@@ -273,7 +274,9 @@ model Notification {
   message         String           @db.Text
   isRead          Boolean          @default(false)
   type            NotificationType
+  linkUrl         String?          // Optional URL to direct users when clicking notification
   createdAt       DateTime         @default(now())
+  expiresAt       DateTime?        // Optional expiration date
   
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -285,15 +288,65 @@ model HostelOwnerNotification {
   message         String           @db.Text
   isRead          Boolean          @default(false)
   type            NotificationType
+  linkUrl         String?          // Optional URL to direct owners when clicking notification
   createdAt       DateTime         @default(now())
+  expiresAt       DateTime?        // Optional expiration date
   
   hostelOwner     HostelOwner      @relation(fields: [hostelOwnerId], references: [id], onDelete: Cascade)
+}
+
+model Admin {
+  id              Int              @id @default(autoincrement())
+  name            String
+  email           String           @unique
+  password        String
+  role            AdminRole        @default(SUPER_ADMIN)
+  profileImage    String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  
+  notifications   AdminNotification[]
+}
+
+model AdminNotification {
+  id              Int              @id @default(autoincrement())
+  adminId         Int
+  title           String
+  message         String           @db.Text
+  isRead          Boolean          @default(false)
+  type            NotificationType
+  linkUrl         String?          // Optional URL to direct admin when clicking notification
+  priority        Int              @default(1)  // 1 (low) to 5 (high) priority level
+  createdAt       DateTime         @default(now())
+  expiresAt       DateTime?        // Optional expiration date
+  
+  admin           Admin            @relation(fields: [adminId], references: [id], onDelete: Cascade)
+}
+
+model BroadcastNotification {
+  id                Int                 @id @default(autoincrement())
+  title             String
+  message           String              @db.Text
+  receiverType      NotificationReceiver
+  type              NotificationType
+  linkUrl           String?             // Optional URL to direct users when clicking notification
+  priority          Int                 @default(1)  // 1 (low) to 5 (high) priority level
+  createdAt         DateTime            @default(now())
+  expiresAt         DateTime?           // Optional expiration date
+  isSent            Boolean             @default(false)
 }
 
 enum UserRole {
   ADMIN
   HOSTEL_OWNER
   STUDENT
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  CONTENT_MANAGER
+  SUPPORT_ADMIN
+  FINANCE_ADMIN
 }
 
 enum GenderPolicy {
@@ -384,6 +437,7 @@ enum StaffStatus {
 enum SenderType {
   USER
   HOSTEL_OWNER
+  ADMIN
 }
 
 enum NotificationType {
@@ -392,4 +446,17 @@ enum NotificationType {
   SYSTEM
   MESSAGE
   MAINTENANCE
+  APPROVAL
+  VERIFICATION
+  REVIEW
+  ACCOUNT
+  PROMOTION
+  ANNOUNCEMENT
+}
+
+enum NotificationReceiver {
+  ADMIN
+  USER
+  HOSTEL_OWNER
+  ALL
 }

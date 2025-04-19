@@ -11,6 +11,7 @@ const staffRoute = require("./routes/staffRoute");
 const roomRoute = require("./routes/roomRoute");
 const chatRoute = require("./routes/chatRoute");
 const dashboardRoute = require("./routes/dashboardRoute");
+const notificationRoute = require("./routes/notificationRoute");
 
 const { initializeSocket } = require("./config/socketConfig");
 
@@ -41,6 +42,7 @@ app.use("/staff", staffRoute);
 app.use("/room", roomRoute);
 app.use("/chat", chatRoute);
 app.use("/dashbaord", dashboardRoute);
+app.use("/notifications", notificationRoute);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

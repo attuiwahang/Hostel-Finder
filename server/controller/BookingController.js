@@ -1,5 +1,6 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
+const socketService = require("../config/socketConfig"); 
 
 // Create a new booking
 exports.bookHostel = async (req, res) => {
@@ -66,21 +67,39 @@ exports.bookHostel = async (req, res) => {
           connect: { id: Number(hostelOwnerId) }
         }
       },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true
+          }
+        },
+        hostelOwner: {
+          select: {
+            hostelName: true,
+            ownerName: true
+          }
+        }
+      }
     });
 
-    // Create notification for hostel owner
-    // await prisma.HostelOwnerNotification.create({
-    //   data: {
-    //     hostelOwnerId: Number(hostelOwnerId),
-    //     title: "New Booking Request",
-    //     message: `${userName || user.name} has requested a booking starting on ${checkInDateObj.toLocaleDateString()}.`,
-    //     type: "BOOKING",
-    //     isRead: false,
-    //     hostelOwner: {
-    //       connect: { id: Number(hostelOwnerId) }
-    //     }
-    //   }
-    // });
+    // Send notification to hostel owner about new booking
+    await socketService.createHostelOwnerNotification(
+      Number(hostelOwnerId),
+      "New Booking Request",
+      `${userName || user.name} has requested to book your hostel for ${duration} days starting on ${checkInDateObj.toLocaleDateString()}.`,
+      "BOOKING",
+      `/bookings/${newBooking.id}`
+    );
+
+    // Send confirmation notification to the student/user
+    await socketService.createUserNotification(
+      Number(userId),
+      "Booking Request Submitted",
+      `Your request to book ${hostelOwner.hostelName} has been submitted and is awaiting approval from the hostel owner.`,
+      "BOOKING",
+      `/bookings/${newBooking.id}`
+    );
 
     return res.status(201).json({
       success: true,
@@ -102,6 +121,7 @@ exports.bookHostel = async (req, res) => {
     });
   }
 };
+
 // Get all bookings (with optional filters)
 exports.getAllBookings = async (req, res) => {
   try {
@@ -219,7 +239,7 @@ exports.getBookingById = async (req, res) => {
 // Get bookings for a specific user
 exports.getUserBookings = async (req, res) => {
   try {
-    const  userId  = req.user.id;
+    const userId = req.user.id;
     const { status, page = 1, limit = 10 } = req.query;
     
     // Build filter object
@@ -352,13 +372,29 @@ exports.updateBookingStatus = async (req, res) => {
     const { status } = req.body;
     
     // Validate status
-    if (!status || !['PENDING', 'CONFIRMED', 'CANCELLED'].includes(status)) {
+    if (!status || !['PENDING', 'CONFIRMED', 'CANCELLED', 'ACTIVE', 'COMPLETED'].includes(status)) {
       return res.status(400).json({ message: "Invalid status value" });
     }
     
     // Check if booking exists
     const existingBooking = await prisma.booking.findUnique({
-      where: { id: Number(id) }
+      where: { id: Number(id) },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
+        hostelOwner: {
+          select: {
+            id: true,
+            hostelName: true,
+            ownerName: true
+          }
+        }
+      }
     });
     
     if (!existingBooking) {
@@ -370,21 +406,51 @@ exports.updateBookingStatus = async (req, res) => {
       where: { id: Number(id) },
       data: { status },
       include: {
-        user: {
-          select: {
-            name: true,
-            email: true
-          }
-        },
-        hostelOwner: {
-          select: {
-            hostelName: true
-          }
-        }
+        user: true,
+        hostelOwner: true
       }
     });
     
-    // Here you could add notification logic (email, SMS, etc.)
+    // Create notifications based on the status update
+    let studentMessage = '';
+    let notificationType = 'BOOKING';
+    
+    switch(status) {
+      case 'CONFIRMED':
+        studentMessage = `Good news! Your booking at ${existingBooking.hostelOwner.hostelName} has been confirmed. Check-in date: ${new Date(existingBooking.checkInDate).toLocaleDateString()}.`;
+        break;
+      case 'CANCELLED':
+        studentMessage = `Your booking at ${existingBooking.hostelOwner.hostelName} has been cancelled. Please contact the hostel owner for more information.`;
+        break;
+      case 'ACTIVE':
+        studentMessage = `Your booking at ${existingBooking.hostelOwner.hostelName} is now active. Enjoy your stay!`;
+        break;
+      case 'COMPLETED':
+        studentMessage = `Thank you for staying at ${existingBooking.hostelOwner.hostelName}. Your booking is now marked as completed. We hope you enjoyed your stay!`;
+        break;
+      default:
+        studentMessage = `Your booking status for ${existingBooking.hostelOwner.hostelName} has been updated to ${status}.`;
+    }
+    
+    // Send notification to the student/user
+    await socketService.createUserNotification(
+      existingBooking.user.id,
+      `Booking ${status}`,
+      studentMessage,
+      notificationType,
+      `/bookings/${id}`
+    );
+    
+    // Notification for the hostel owner
+    const hostelOwnerMessage = `You have ${status.toLowerCase()} the booking for ${existingBooking.user.name} (${existingBooking.user.email}). Check-in date: ${new Date(existingBooking.checkInDate).toLocaleDateString()}.`;
+    
+    await socketService.createHostelOwnerNotification(
+      existingBooking.hostelOwner.id,
+      `Booking ${status}`,
+      hostelOwnerMessage,
+      'BOOKING',
+      `/bookings/${id}`
+    );
     
     return res.status(200).json({
       message: `Booking status updated to ${status}`,
@@ -406,7 +472,21 @@ exports.deleteBooking = async (req, res) => {
     
     // Check if booking exists
     const existingBooking = await prisma.booking.findUnique({
-      where: { id: Number(id) }
+      where: { id: Number(id) },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        hostelOwner: {
+          select: {
+            id: true,
+            hostelName: true
+          }
+        }
+      }
     });
     
     if (!existingBooking) {
@@ -434,6 +514,24 @@ exports.deleteBooking = async (req, res) => {
     await prisma.booking.delete({
       where: { id: Number(id) }
     });
+    
+    // Send notification to student/user
+    await socketService.createUserNotification(
+      existingBooking.user.id,
+      "Booking Deleted",
+      `Your booking for ${existingBooking.hostelOwner.hostelName} has been deleted. If you didn't request this, please contact the hostel owner.`,
+      "BOOKING",
+      "/bookings"
+    );
+    
+    // Send notification to hostel owner
+    await socketService.createHostelOwnerNotification(
+      existingBooking.hostelOwner.id,
+      "Booking Deleted",
+      `The booking for ${existingBooking.user.name} has been deleted.`,
+      "BOOKING",
+      "/bookings"
+    );
     
     return res.status(200).json({
       message: "Booking deleted successfully"
@@ -509,7 +607,7 @@ exports.getBookingStats = async (req, res) => {
 exports.createPayment = async (req, res) => {
   try {
     const { bookingId } = req.params;
-    const { amount, pidx } = req.body;
+    const { amount, pidx, paymentMethod = 'ONLINE', paymentType = 'BOOKING_PAYMENT' } = req.body;
     
     // Validate required fields
     if (!amount || !pidx) {
@@ -518,7 +616,21 @@ exports.createPayment = async (req, res) => {
     
     // Check if booking exists
     const booking = await prisma.booking.findUnique({
-      where: { id: Number(bookingId) }
+      where: { id: Number(bookingId) },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        hostelOwner: {
+          select: {
+            id: true,
+            hostelName: true
+          }
+        }
+      }
     });
     
     if (!booking) {
@@ -540,9 +652,29 @@ exports.createPayment = async (req, res) => {
         bookingId: Number(bookingId),
         amount: Number(amount),
         pidx,
+        paymentMethod,
+        paymentType,
         paymentStatus: "PENDING"
       }
     });
+    
+    // Send notification to student/user
+    await socketService.createUserNotification(
+      booking.user.id,
+      "Payment Initiated",
+      `Your payment of Rs. ${amount} for ${booking.hostelOwner.hostelName} has been initiated and is being processed.`,
+      "PAYMENT",
+      `/bookings/${bookingId}`
+    );
+    
+    // Send notification to hostel owner
+    await socketService.createHostelOwnerNotification(
+      booking.hostelOwner.id,
+      "Payment Initiated",
+      `${booking.user.name} has initiated a payment of Rs. ${amount} for their booking.`,
+      "PAYMENT",
+      `/bookings/${bookingId}`
+    );
     
     return res.status(201).json({
       message: "Payment created successfully",
@@ -564,14 +696,31 @@ exports.updatePaymentStatus = async (req, res) => {
     const { status } = req.body;
     
     // Validate status
-    if (!status || !['PENDING', 'COMPLETED', 'FAILED'].includes(status)) {
+    if (!status || !['PENDING', 'COMPLETED', 'FAILED', 'REFUNDED'].includes(status)) {
       return res.status(400).json({ message: "Invalid status value" });
     }
     
     // Find the payment
     const payment = await prisma.payment.findUnique({
       where: { pidx },
-      include: { booking: true }
+      include: { 
+        booking: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true
+              }
+            },
+            hostelOwner: {
+              select: {
+                id: true,
+                hostelName: true
+              }
+            }
+          }
+        } 
+      }
     });
     
     if (!payment) {
@@ -585,16 +734,72 @@ exports.updatePaymentStatus = async (req, res) => {
     });
     
     // If payment is completed, update booking status to CONFIRMED
+    let bookingUpdate = null;
     if (status === 'COMPLETED') {
-      await prisma.booking.update({
+      bookingUpdate = await prisma.booking.update({
         where: { id: payment.bookingId },
-        data: { status: 'CONFIRMED' }
+        data: { status: 'CONFIRMED', paymentStatus: 'COMPLETED' }
       });
+      
+      // Send payment success notification to student/user
+      await socketService.createUserNotification(
+        payment.booking.user.id,
+        "Payment Successful",
+        `Your payment of Rs. ${payment.amount} for ${payment.booking.hostelOwner.hostelName} has been successfully processed. Your booking is now confirmed!`,
+        "PAYMENT",
+        `/bookings/${payment.bookingId}`
+      );
+      
+      // Send payment received notification to hostel owner
+      await socketService.createHostelOwnerNotification(
+        payment.booking.hostelOwner.id,
+        "Payment Received",
+        `You've received a payment of Rs. ${payment.amount} from ${payment.booking.user.name}. Their booking is now confirmed.`,
+        "PAYMENT",
+        `/bookings/${payment.bookingId}`
+      );
+    } else if (status === 'FAILED') {
+      // Send payment failed notification to student/user
+      await socketService.createUserNotification(
+        payment.booking.user.id,
+        "Payment Failed",
+        `Your payment of Rs. ${payment.amount} for ${payment.booking.hostelOwner.hostelName} couldn't be processed. Please try again or contact support.`,
+        "PAYMENT",
+        `/bookings/${payment.bookingId}`
+      );
+      
+      // Send payment failed notification to hostel owner
+      await socketService.createHostelOwnerNotification(
+        payment.booking.hostelOwner.id,
+        "Payment Failed",
+        `The payment of Rs. ${payment.amount} from ${payment.booking.user.name} has failed to process.`,
+        "PAYMENT",
+        `/bookings/${payment.bookingId}`
+      );
+    } else if (status === 'REFUNDED') {
+      // Send refund notification to student/user
+      await socketService.createUserNotification(
+        payment.booking.user.id,
+        "Payment Refunded",
+        `Your payment of Rs. ${payment.amount} for ${payment.booking.hostelOwner.hostelName} has been refunded to your original payment method.`,
+        "PAYMENT",
+        `/bookings/${payment.bookingId}`
+      );
+      
+      // Send refund notification to hostel owner
+      await socketService.createHostelOwnerNotification(
+        payment.booking.hostelOwner.id,
+        "Payment Refunded",
+        `A refund of Rs. ${payment.amount} has been processed for ${payment.booking.user.name}'s booking.`,
+        "PAYMENT",
+        `/bookings/${payment.bookingId}`
+      );
     }
     
     return res.status(200).json({
       message: `Payment status updated to ${status}`,
-      payment: updatedPayment
+      payment: updatedPayment,
+      bookingUpdated: bookingUpdate !== null
     });
   } catch (error) {
     console.error("Error updating payment status:", error);
@@ -609,7 +814,6 @@ exports.updatePaymentStatus = async (req, res) => {
 exports.createBookingByHostelOwner = async (req, res) => {
   try {
     const {
-     
       userName,
       email,
       phoneNumber,
@@ -619,7 +823,7 @@ exports.createBookingByHostelOwner = async (req, res) => {
       totalAmount
     } = req.body;
 
-    const hostelOwnerId = req.user.id
+    const hostelOwnerId = req.user.id;
 
     // Validate required fields
     if (!hostelOwnerId || !userName || !email || !phoneNumber || !checkInDate || !duration || !totalAmount) {
@@ -648,7 +852,7 @@ exports.createBookingByHostelOwner = async (req, res) => {
 
     if (!user) {
       // Create a new user with generated password
-      const tempPassword = Math.random().toString(36).slice(-8);
+      const tempPassword = generateTemporaryPassword();
       user = await prisma.user.create({
         data: {
           name: userName,
@@ -658,6 +862,8 @@ exports.createBookingByHostelOwner = async (req, res) => {
           role: "STUDENT"
         }
       });
+      
+      // Here you might want to send an email to the user with their credentials
     }
 
     // Generate a unique booking number in the format "BK-XXXX"
@@ -686,8 +892,24 @@ exports.createBookingByHostelOwner = async (req, res) => {
 
     // Create the booking
     const newBooking = await prisma.booking.create({
-      data: bookingData
+      data: bookingData,
+      include: {
+        hostelOwner: {
+          select: {
+            hostelName: true
+          }
+        }
+      }
     });
+
+    // Send notification to the student/user
+    await socketService.createUserNotification(
+      user.id,
+      "Booking Confirmed",
+      `${hostelOwner.hostelName} has directly booked a stay for you starting on ${checkInDateObj.toLocaleDateString()} for ${duration} days. View the details in your bookings.`,
+      "BOOKING",
+      `/bookings/${newBooking.id}`
+    );
 
     return res.status(201).json({
       message: "Booking created successfully",
